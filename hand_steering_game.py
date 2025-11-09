@@ -323,6 +323,7 @@ class KeyboardController:
         self.keyboard = Controller()
         self.current_steering = None  # Track current steering direction
         self.is_brake_pressed = False  # Track brake key state
+        self.is_accelerating = False  # Track acceleration (W key) state
         
     def press_key(self, key: str):
         """
@@ -349,16 +350,19 @@ class KeyboardController:
             print(f"Error releasing key {key}: {e}")
     
     def release_all(self):
-        """Release all steering and brake keys."""
+        """Release all steering, brake, and acceleration keys."""
         if self.current_steering == "LEFT":
             self.release_key('a')
         elif self.current_steering == "RIGHT":
             self.release_key('d')
         if self.is_brake_pressed:
             self.release_key('s')
+        if self.is_accelerating:
+            self.release_key('w')
         
         self.current_steering = None
         self.is_brake_pressed = False
+        self.is_accelerating = False
     
     def update_steering(self, direction: Optional[str]):
         """
@@ -396,6 +400,21 @@ class KeyboardController:
         elif not is_braking and self.is_brake_pressed:
             self.release_key('s')
             self.is_brake_pressed = False
+    
+    def update_acceleration(self, should_accelerate: bool):
+        """
+        Update acceleration key based on fist detection.
+        Auto-accelerate (W key) when fists are detected.
+        
+        Args:
+            should_accelerate: True to press acceleration (W key), False to release
+        """
+        if should_accelerate and not self.is_accelerating:
+            self.press_key('w')
+            self.is_accelerating = True
+        elif not should_accelerate and self.is_accelerating:
+            self.release_key('w')
+            self.is_accelerating = False
 
 
 # ============================================================================
@@ -468,14 +487,23 @@ class HandSteeringApp:
         # Get hand centers and classify gestures
         hand_centers = []
         is_braking = False
+        is_accelerating = False  # Track if fists are detected for acceleration
         gesture_classifications = []
         
-        # Check for open palm (brake)
+        # Check for open palm (brake) and fists (acceleration)
+        fist_count = 0
         for hand_landmarks in hand_landmarks_list:
             is_open_palm_gesture = self.hand_detector.is_open_palm(hand_landmarks)
+            is_fist = self.hand_detector.is_fist_closed(hand_landmarks)
+            
             if is_open_palm_gesture:
                 is_braking = True  # Open palm triggers brake
-                break
+            if is_fist:
+                fist_count += 1
+        
+        # Auto-accelerate when both hands are fists (and not braking)
+        if fist_count == 2 and not is_braking:
+            is_accelerating = True
         
         # Get hand centers for steering
         for hand_landmarks in hand_landmarks_list:
@@ -552,6 +580,7 @@ class HandSteeringApp:
         if self.is_detecting:
             self.keyboard_controller.update_steering(steering_direction)
             self.keyboard_controller.update_brake(is_braking)
+            self.keyboard_controller.update_acceleration(is_accelerating)
         else:
             # Release all keys when stopped
             self.keyboard_controller.release_all()
