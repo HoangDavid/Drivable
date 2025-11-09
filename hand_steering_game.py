@@ -487,29 +487,26 @@ class HandSteeringApp:
         # Get hand centers and classify gestures
         hand_centers = []
         is_braking = False
-        is_accelerating = False  # Track if fists are detected for acceleration
+        is_accelerating = False  # Track if acceleration should be active
         gesture_classifications = []
         
-        # Check for open palm (brake) and fists (acceleration)
-        fist_count = 0
+        # Check for open palm (brake)
         for hand_landmarks in hand_landmarks_list:
             is_open_palm_gesture = self.hand_detector.is_open_palm(hand_landmarks)
-            is_fist = self.hand_detector.is_fist_closed(hand_landmarks)
-            
             if is_open_palm_gesture:
                 is_braking = True  # Open palm triggers brake
-            if is_fist:
-                fist_count += 1
-        
-        # Auto-accelerate when both hands are fists (and not braking)
-        if fist_count == 2 and not is_braking:
-            is_accelerating = True
+                break
         
         # Get hand centers for steering
         for hand_landmarks in hand_landmarks_list:
             hand_center = self.hand_detector.get_hand_center(hand_landmarks, w, h)
             if hand_center:
                 hand_centers.append(hand_center)
+        
+        # Auto-accelerate when 2 hands are detected for steering (and not braking)
+        # Always accelerate except when braking
+        if len(hand_centers) == 2 and not is_braking:
+            is_accelerating = True
         
         # Calculate steering based on hand height comparison
         angle = None
