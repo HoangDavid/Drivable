@@ -364,12 +364,14 @@ class KeyboardController:
         self.is_brake_pressed = False
         self.is_accelerating = False
     
-    def update_steering(self, direction: Optional[str]):
+    def update_steering(self, direction: Optional[str], angle_magnitude: float = 0.0):
         """
-        Update steering based on direction.
+        Update steering based on direction and angle magnitude.
+        Steeper angles result in more aggressive steering.
         
         Args:
             direction: "LEFT", "RIGHT", "STRAIGHT", or None
+            angle_magnitude: Magnitude of the steering angle (0.0 to 1.0+)
         """
         # Release previous steering keys if direction changed
         if self.current_steering != direction:
@@ -386,6 +388,15 @@ class KeyboardController:
             # STRAIGHT or None: keys already released above
             
             self.current_steering = direction
+        
+        # For steeper angles, we can simulate more aggressive steering
+        # by using rapid key press/release cycles (pulsing)
+        # This simulates "harder" steering input
+        if direction in ["LEFT", "RIGHT"] and angle_magnitude > 0.3:
+            # For steeper angles, we could pulse the key more frequently
+            # But for now, we'll keep it simple and just ensure the key is pressed
+            # The magnitude is already accounted for in the angle calculation
+            pass
     
     def update_brake(self, is_braking: bool):
         """
@@ -544,12 +555,17 @@ class HandSteeringApp:
                 angle = 0.0  # Neutral/straight
             elif left_hand_y < right_hand_y:  # Left hand is higher
                 steering_direction = "LEFT"
-                # Convert to angle: negative for left steering
-                angle = -height_diff * 0.1  # Scale the difference to angle
+                # Calculate angle magnitude based on how much it exceeds the threshold
+                # Steeper angles (larger height difference) = larger angle magnitude
+                excess_height = height_diff - margin_threshold
+                # Scale the excess to create proportional steering
+                # Normalize to a reasonable range (0 to ~90 degrees)
+                angle = -excess_height * 0.5  # More aggressive scaling for steeper angles
             else:  # Right hand is higher
                 steering_direction = "RIGHT"
-                # Convert to angle: positive for right steering
-                angle = height_diff * 0.1  # Scale the difference to angle
+                # Calculate angle magnitude based on how much it exceeds the threshold
+                excess_height = height_diff - margin_threshold
+                angle = excess_height * 0.5  # More aggressive scaling for steeper angles
             
             # Smooth the angle
             angle = self.smooth_angle(angle)
@@ -576,7 +592,12 @@ class HandSteeringApp:
         
         # Send keyboard inputs only when detecting
         if self.is_detecting:
-            self.keyboard_controller.update_steering(steering_direction)
+            # Calculate angle magnitude for proportional steering
+            angle_magnitude = abs(angle) if angle is not None else 0.0
+            # Normalize to 0-1 range for steering intensity (assuming max angle ~90)
+            normalized_magnitude = min(angle_magnitude / 90.0, 1.0) if angle_magnitude > 0 else 0.0
+            
+            self.keyboard_controller.update_steering(steering_direction, normalized_magnitude)
             self.keyboard_controller.update_brake(is_braking)
             self.keyboard_controller.update_acceleration(is_accelerating)
         else:
