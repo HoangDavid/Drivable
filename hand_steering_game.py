@@ -1,17 +1,16 @@
 """
-Hand Steering Game
-A Python application that uses MediaPipe Hands to control a Pygame driving game.
-Steering is controlled by the angle of a line connecting two fists,
-and braking is triggered by thumbs up gestures.
+Hand Steering Controller for Roblox
+A Python application that uses MediaPipe Hands to control Roblox games via keyboard input.
+Steering is controlled by hand height comparison, and braking is triggered by open palm gesture.
 """
 
 import cv2
 import mediapipe as mp
 import numpy as np
-import pygame
 import math
 from collections import deque
 from typing import Tuple, Optional, List
+from pynput.keyboard import Controller, Key
 
 
 # ============================================================================
@@ -206,7 +205,8 @@ class HandDetector:
     def draw_detection(self, image: np.ndarray, hand_landmarks_list: List,
                       hand_centers: List[Tuple[int, int]], 
                       angle: Optional[float], is_braking: bool,
-                      gesture_classifications: List[str] = None) -> np.ndarray:
+                      gesture_classifications: List[str] = None,
+                      is_detecting: bool = False) -> np.ndarray:
         """
         Draw hand landmarks, connecting line, angle, brake indicator, and gesture classifications.
         
@@ -287,135 +287,115 @@ class HandDetector:
         hand_count_text = f"Hands detected: {len(hand_landmarks_list)}"
         cv2.putText(image, hand_count_text, (10, y_offset), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        y_offset += line_height
+        
+        # Draw detection status
+        if is_detecting:
+            status_text = "STATUS: STARTED (Press 'x' to STOP)"
+            status_color = (0, 255, 0)  # Green
+        else:
+            status_text = "STATUS: STOPPED (Press 's' to START)"
+            status_color = (0, 0, 255)  # Red
+        
+        cv2.putText(image, status_text, (10, y_offset), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, status_color, 2)
+        y_offset += line_height
+        
+        # Draw instructions
+        cv2.putText(image, "Controls: 's'=START, 'x'=STOP, 'q'=QUIT", (10, y_offset), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         
         return image
 
 
 # ============================================================================
-# GAME MODULE
+# KEYBOARD CONTROLLER MODULE
 # ============================================================================
 
-class DrivingGame:
+class KeyboardController:
     """
-    Pygame-based driving game with a car sprite that moves forward automatically.
-    Steering adjusts horizontal position, and braking slows forward speed.
+    Handles keyboard input simulation for Roblox games.
+    Maps hand gestures to WASD keys.
     """
     
-    def __init__(self, width: int = 400, height: int = 600):
+    def __init__(self):
+        """Initialize keyboard controller."""
+        self.keyboard = Controller()
+        self.current_steering = None  # Track current steering direction
+        self.is_brake_pressed = False  # Track brake key state
+        
+    def press_key(self, key: str):
         """
-        Initialize the driving game.
+        Press and hold a key.
         
         Args:
-            width: Game window width
-            height: Game window height
+            key: Key to press (e.g., 'a', 'd', 's')
         """
-        pygame.init()
-        self.width = width
-        self.height = height
-        self.screen = pygame.display.set_mode((width, height))
-        pygame.display.set_caption("Hand Steering Game")
-        
-        # Game state
-        self.car_x = width // 2
-        self.car_y = height - 100
-        self.base_speed = 3.0
-        self.current_speed = self.base_speed
-        self.steering_sensitivity = 2.0
-        
-        # Road boundaries
-        self.road_left = width // 4
-        self.road_right = 3 * width // 4
-        
-        # Create simple car sprite (rectangle)
-        self.car_width = 40
-        self.car_height = 60
-        self.car_color = (255, 0, 0)  # Red car
-        
-    def update(self, steering_angle: float, is_braking: bool):
+        try:
+            self.keyboard.press(key)
+        except Exception as e:
+            print(f"Error pressing key {key}: {e}")
+    
+    def release_key(self, key: str):
         """
-        Update game state based on steering angle and brake status.
+        Release a key.
         
         Args:
-            steering_angle: Steering angle in degrees (-90 to 90)
-            is_braking: Whether brake is active
+            key: Key to release (e.g., 'a', 'd', 's')
         """
-        # Normalize steering angle to -1 to 1 range
-        # Map -90 to 90 degrees to -1 to 1
-        normalized_angle = steering_angle / 90.0
-        normalized_angle = max(-1.0, min(1.0, normalized_angle))
-        
-        # Apply steering (adjust car x position)
-        # Negate to fix inverse control: tilt left = steer left, tilt right = steer right
-        self.car_x -= normalized_angle * self.steering_sensitivity
-        
-        # Keep car within road boundaries
-        self.car_x = max(self.road_left + self.car_width // 2, 
-                        min(self.road_right - self.car_width // 2, self.car_x))
-        
-        # Apply braking (reduce speed)
-        if is_braking:
-            self.current_speed = max(0.5, self.current_speed * 0.95)
-        else:
-            # Gradually return to base speed
-            self.current_speed = min(self.base_speed, 
-                                    self.current_speed * 1.02)
-        
-        # Move car forward
-        self.car_y -= self.current_speed
-        
-        # Reset car position when it goes off screen (top)
-        if self.car_y < -self.car_height:
-            self.car_y = self.height
+        try:
+            self.keyboard.release(key)
+        except Exception as e:
+            print(f"Error releasing key {key}: {e}")
     
-    def draw(self):
-        """Draw the game scene."""
-        # Clear screen (dark gray background)
-        self.screen.fill((40, 40, 40))
+    def release_all(self):
+        """Release all steering and brake keys."""
+        if self.current_steering == "LEFT":
+            self.release_key('a')
+        elif self.current_steering == "RIGHT":
+            self.release_key('d')
+        if self.is_brake_pressed:
+            self.release_key('s')
         
-        # Draw road
-        pygame.draw.rect(self.screen, (60, 60, 60), 
-                        (self.road_left, 0, 
-                         self.road_right - self.road_left, self.height))
-        
-        # Draw road center line (dashed)
-        center_x = self.width // 2
-        for y in range(0, self.height, 40):
-            pygame.draw.line(self.screen, (255, 255, 0), 
-                           (center_x, y), (center_x, y + 20), 2)
-        
-        # Draw road boundaries
-        pygame.draw.line(self.screen, (255, 255, 255), 
-                        (self.road_left, 0), (self.road_left, self.height), 3)
-        pygame.draw.line(self.screen, (255, 255, 255), 
-                        (self.road_right, 0), (self.road_right, self.height), 3)
-        
-        # Draw car
-        car_rect = pygame.Rect(
-            self.car_x - self.car_width // 2,
-            self.car_y - self.car_height // 2,
-            self.car_width,
-            self.car_height
-        )
-        pygame.draw.rect(self.screen, self.car_color, car_rect)
-        
-        # Draw car details (simple windows)
-        window_rect = pygame.Rect(
-            self.car_x - self.car_width // 4,
-            self.car_y - self.car_height // 3,
-            self.car_width // 2,
-            self.car_height // 3
-        )
-        pygame.draw.rect(self.screen, (100, 150, 255), window_rect)
-        
-        # Update display
-        pygame.display.flip()
+        self.current_steering = None
+        self.is_brake_pressed = False
     
-    def handle_events(self):
-        """Handle Pygame events (for window closing)."""
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return False
-        return True
+    def update_steering(self, direction: Optional[str]):
+        """
+        Update steering based on direction.
+        
+        Args:
+            direction: "LEFT", "RIGHT", "STRAIGHT", or None
+        """
+        # Release previous steering keys if direction changed
+        if self.current_steering != direction:
+            if self.current_steering == "LEFT":
+                self.release_key('a')
+            elif self.current_steering == "RIGHT":
+                self.release_key('d')
+            
+            # Press new steering key
+            if direction == "LEFT":
+                self.press_key('a')
+            elif direction == "RIGHT":
+                self.press_key('d')
+            # STRAIGHT or None: keys already released above
+            
+            self.current_steering = direction
+    
+    def update_brake(self, is_braking: bool):
+        """
+        Update brake key based on brake status.
+        
+        Args:
+            is_braking: True to press brake (S key), False to release
+        """
+        if is_braking and not self.is_brake_pressed:
+            self.press_key('s')
+            self.is_brake_pressed = True
+        elif not is_braking and self.is_brake_pressed:
+            self.release_key('s')
+            self.is_brake_pressed = False
 
 
 # ============================================================================
@@ -424,14 +404,14 @@ class DrivingGame:
 
 class HandSteeringApp:
     """
-    Main application that connects hand detection with the driving game.
-    Displays camera feed and game window side-by-side.
+    Main application that connects hand detection with keyboard input for Roblox.
+    Displays camera feed with hand tracking overlay.
     """
     
     def __init__(self):
         """Initialize the application."""
         self.hand_detector = HandDetector()
-        self.game = DrivingGame()
+        self.keyboard_controller = KeyboardController()
         
         # Initialize camera
         self.cap = cv2.VideoCapture(0)
@@ -447,8 +427,11 @@ class HandSteeringApp:
         self.current_angle = 0.0
         self.is_braking = False
         
-        # Window positions for side-by-side display
-        self.camera_window_name = "Hand Tracking"
+        # Detection state
+        self.is_detecting = False  # Start/Stop state
+        
+        # Window name
+        self.camera_window_name = "Hand Tracking - Roblox Controller"
         cv2.namedWindow(self.camera_window_name)
         
     def smooth_angle(self, new_angle: float) -> float:
@@ -502,7 +485,8 @@ class HandSteeringApp:
         
         # Calculate steering based on hand height comparison
         angle = None
-        steering_direction = None
+        steering_direction = None  # Initialize to None
+        
         if len(hand_centers) == 2:
             # Identify left and right hands based on x-position
             if hand_centers[0][0] < hand_centers[1][0]:
@@ -560,18 +544,29 @@ class HandSteeringApp:
         
         # Draw detection overlay with gesture classifications
         frame = self.hand_detector.draw_detection(
-            frame, hand_landmarks_list, hand_centers, angle, is_braking, gesture_classifications
+            frame, hand_landmarks_list, hand_centers, angle, is_braking, 
+            gesture_classifications, self.is_detecting
         )
+        
+        # Send keyboard inputs only when detecting
+        if self.is_detecting:
+            self.keyboard_controller.update_steering(steering_direction)
+            self.keyboard_controller.update_brake(is_braking)
+        else:
+            # Release all keys when stopped
+            self.keyboard_controller.release_all()
         
         return angle, is_braking
     
     def run(self):
         """Main application loop."""
-        print("Hand Steering Game Started!")
+        print("Hand Steering Controller for Roblox Started!")
         print("Controls:")
-        print("  - Two hands detected: Steering (angle of line between hands)")
+        print("  - Press 's' to START detection and keyboard input")
+        print("  - Press 'x' to STOP detection and release all keys")
+        print("  - Press 'q' to QUIT")
+        print("  - Two hands detected: Steering (LEFT/RIGHT/STRAIGHT)")
         print("  - Open palm (either hand): Brake")
-        print("  - Press 'q' in camera window to quit")
         print("-" * 50)
         
         running = True
@@ -596,25 +591,29 @@ class HandSteeringApp:
             # Update brake status
             self.is_braking = is_braking
             
-            # Update game
-            self.game.update(self.current_angle, self.is_braking)
-            self.game.draw()
-            
-            # Check if game window should close
-            if not self.game.handle_events():
-                running = False
-            
             # Display camera feed
             cv2.imshow(self.camera_window_name, frame)
             
-            # Print status to terminal
-            brake_status = "BRAKING" if self.is_braking else "No brake"
-            print(f"\rSteering Angle: {self.current_angle:6.1f}° | {brake_status:12s}", 
-                  end="", flush=True)
+            # Handle keyboard input for Start/Stop/Quit
+            key = cv2.waitKey(1) & 0xFF
             
-            # Check for quit key
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            if key == ord('q'):
                 running = False
+            elif key == ord('s'):
+                if not self.is_detecting:
+                    self.is_detecting = True
+                    print("\n[STARTED] Detection and keyboard input enabled")
+            elif key == ord('x'):
+                if self.is_detecting:
+                    self.is_detecting = False
+                    self.keyboard_controller.release_all()
+                    print("\n[STOPPED] Detection and keyboard input disabled")
+            
+            # Print status to terminal
+            status = "STARTED" if self.is_detecting else "STOPPED"
+            brake_status = "BRAKING" if self.is_braking else "No brake"
+            print(f"\rStatus: {status:7s} | Steering: {self.current_angle:6.1f}° | {brake_status:12s}", 
+                  end="", flush=True)
         
         # Cleanup
         self.cleanup()
@@ -622,9 +621,10 @@ class HandSteeringApp:
     
     def cleanup(self):
         """Clean up resources."""
+        # Release all keys before closing
+        self.keyboard_controller.release_all()
         self.cap.release()
         cv2.destroyAllWindows()
-        pygame.quit()
 
 
 # ============================================================================
