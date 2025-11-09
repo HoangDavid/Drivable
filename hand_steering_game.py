@@ -536,11 +536,12 @@ class HandSteeringApp:
             # Calculate average height for margin calculation
             avg_height = (left_hand_y + right_hand_y) / 2
             
-            # 10% margin of error for straight driving
-            margin_threshold = avg_height * 0.10
+            # Increased margin of error for straight driving (30% instead of 10%)
+            # This allows for more tolerance before detecting left/right turns
+            margin_threshold = avg_height * 0.30
             
             # Determine steering direction
-            # If height difference is within 10% margin, drive straight
+            # If height difference is within 30% margin, drive straight
             if height_diff <= margin_threshold:
                 steering_direction = "STRAIGHT"
                 angle = 0.0  # Neutral/straight
