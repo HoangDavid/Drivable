@@ -541,31 +541,37 @@ class HandSteeringApp:
             # Calculate height difference
             height_diff = abs(right_hand_y - left_hand_y)
             
-            # Calculate average height for margin calculation
-            avg_height = (left_hand_y + right_hand_y) / 2
+            # Calculate horizontal distance between hands for angle calculation
+            horizontal_dist = abs(right_hand[0] - left_hand[0])
             
-            # Increased margin of error for straight driving (30% instead of 10%)
-            # This allows for more tolerance before detecting left/right turns
-            margin_threshold = avg_height * 0.30
+            # Calculate angle in degrees from height difference and horizontal distance
+            # Use atan2 to get angle: atan2(height_diff, horizontal_dist) gives angle in radians
+            if horizontal_dist > 0:
+                angle_rad = math.atan2(height_diff, horizontal_dist)
+                angle_deg = math.degrees(angle_rad)
+            else:
+                angle_deg = 0.0
             
-            # Determine steering direction
-            # If height difference is within 30% margin, drive straight
-            if height_diff <= margin_threshold:
+            # Fixed angle threshold for straight driving (12.5 degrees average of 10-15)
+            straight_threshold_deg = 12.5
+            
+            # Determine steering direction based on angle
+            if angle_deg <= straight_threshold_deg:
                 steering_direction = "STRAIGHT"
                 angle = 0.0  # Neutral/straight
             elif left_hand_y < right_hand_y:  # Left hand is higher
                 steering_direction = "LEFT"
                 # Calculate angle magnitude based on how much it exceeds the threshold
-                # Steeper angles (larger height difference) = larger angle magnitude
-                excess_height = height_diff - margin_threshold
-                # Scale the excess to create proportional steering
-                # Normalize to a reasonable range (0 to ~90 degrees)
-                angle = -excess_height * 0.5  # More aggressive scaling for steeper angles
+                # Steeper angles (larger angle) = larger angle magnitude
+                excess_angle = angle_deg - straight_threshold_deg
+                # Scale to create proportional steering (negative for left)
+                angle = -excess_angle
             else:  # Right hand is higher
                 steering_direction = "RIGHT"
                 # Calculate angle magnitude based on how much it exceeds the threshold
-                excess_height = height_diff - margin_threshold
-                angle = excess_height * 0.5  # More aggressive scaling for steeper angles
+                excess_angle = angle_deg - straight_threshold_deg
+                # Scale to create proportional steering (positive for right)
+                angle = excess_angle
             
             # Smooth the angle
             angle = self.smooth_angle(angle)
